@@ -1,0 +1,22 @@
+tags:
+  "minecraft:soul_speed_blocks": 0.5
+  "minecraft:dirt": 0.85
+  "minecraft:grass_blocks": 0.85
+  "minecraft:sand": 0.65
+  "minecraft:concrete_powders": 0.65
+  "minecraft:logs": 1.05
+blocks:
+  "minecraft:gravel": 0.65
+  "minecraft:suspicious_gravel": 0.65
+  "minecraft:cobblestone": 0.95
+  "minecraft:copper_block": 1.15
+  "minecraft:waxed_copper_block": 1.15
+  "minecraft:exposed_copper": 1.0
+  "minecraft:waxed_exposed_copper": 1.0
+  "minecraft:weathered_copper": 0.9
+  "minecraft:waxed_weathered_copper": 0.9
+  "minecraft:oxidized_copper": 0.75
+  "minecraft:waxed_oxidized_copper": 0.75
+  "minecraft:iron_block": 1.25
+  "minecraft:gold_block": 1.35
+  "minecraft:blue_ice": 1.5

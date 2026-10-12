@@ -1,69 +1,144 @@
 package com.spacerulerwill.adaptiverails;
 
-import org.bukkit.Location;
-import org.bukkit.Material;
-import org.bukkit.Tag;
+import com.mojang.brigadier.Command;
+import com.mojang.brigadier.context.CommandContext;
+import com.mojang.brigadier.tree.LiteralCommandNode;
+import io.papermc.paper.command.brigadier.CommandSourceStack;
+import io.papermc.paper.command.brigadier.Commands;
+import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
+import org.bukkit.*;
 import org.bukkit.block.Block;
 import org.bukkit.block.data.Rail;
+import org.bukkit.command.CommandSender;
+import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Minecart;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.vehicle.VehicleMoveEvent;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 
 import java.util.HashMap;
 import java.util.Map;
-
+import java.util.Set;
 
 public final class AdaptiveRails extends JavaPlugin implements Listener {
     private final Logger logger = this.getSLF4JLogger();
     private static final double DEFAULT_SPEED = 0.4;
-    private static final Map<Material, Double> DEFAULT_SPEED_MULTIPLIERS = new HashMap<>();
+    private final Map<@NotNull Material, @NotNull Double> speedMultipliers = new HashMap<>();
 
-    @SafeVarargs
-    static void addTagsToDefaultSpeedMultipliers(double value, Tag<Material>... tags) {
-        for (Tag<Material> tag : tags) {
-            tag.getValues().forEach(material -> {
-                DEFAULT_SPEED_MULTIPLIERS.put(material, value);
-            });
+    private int loadTags() {
+        int failedToLoad = 0;
+        FileConfiguration config = this.getConfig();
+        ConfigurationSection tagsSection = config.getConfigurationSection("tags");
+        if (tagsSection != null) {
+            Set<String> keys = tagsSection.getKeys(false);
+            for (String key : keys) {
+                // try and parse the key as a namespaced key
+                NamespacedKey namespacedKey = NamespacedKey.fromString(key);
+                if (namespacedKey == null) {
+                    this.logger.error("Invalid namespaced key: {}", key);
+                    failedToLoad++;
+                    continue;
+                }
+                // get a tag from the namespaced key
+                Tag<Material> tag = Bukkit.getTag(Tag.REGISTRY_BLOCKS, namespacedKey, Material.class);
+                if (tag == null) {
+                    this.logger.error("Tag does not exist: {}", key);
+                    failedToLoad++;
+                    continue;
+                }
+                // get its value
+                double value = tagsSection.getDouble(key);
+                // add to speed multipliers
+                for (Material material : tag.getValues()) {
+                    this.speedMultipliers.put(material, value);
+                }
+            }
         }
+        return failedToLoad;
     }
 
-    static void addMaterialsToDefaultSpeedMultipliers(double value, Material... materials) {
-        for (Material material : materials) {
-            DEFAULT_SPEED_MULTIPLIERS.put(material, value);
+    private int loadBlocks() {
+        int failedToLoad = 0;
+        FileConfiguration config = this.getConfig();
+        ConfigurationSection blocksSection = config.getConfigurationSection("blocks");
+        if (blocksSection != null) {
+            Set<String> keys = blocksSection.getKeys(false);
+            for (String key : keys) {
+                // try and parse the key as a namespaced key
+                NamespacedKey namespacedKey = NamespacedKey.fromString(key);
+                if (namespacedKey == null) {
+                    this.logger.error("Invalid namespaced key: {}.", key);
+                    failedToLoad++;
+                    continue;
+                }
+                // get our block and get its material
+                Material material = Registry.MATERIAL.get(namespacedKey);
+                if (material == null) {
+                    this.logger.error("Block does not exist: {}.", key);
+                    failedToLoad++;
+                    continue;
+                }
+                // get its value
+                double value = blocksSection.getDouble(key);
+                // add to speed multipliers
+                this.speedMultipliers.put(material, value);
+            }
         }
+        return failedToLoad;
     }
 
-    static {
-        // Soul sand and soil and the slowest etc
-        addTagsToDefaultSpeedMultipliers(0.5, Tag.SOUL_SPEED_BLOCKS);
-        // Grass and dirt are slightly slower than usual
-        addTagsToDefaultSpeedMultipliers(0.85, Tag.GRASS_BLOCKS, Tag.DIRT);
-        // Sandy type blocks are slower still
-        addTagsToDefaultSpeedMultipliers(0.65, Tag.SAND, Tag.CONCRETE_POWDERS);
-        addMaterialsToDefaultSpeedMultipliers(0.65, Material.GRAVEL, Material.SUSPICIOUS_GRAVEL);
-        // Cobblestone is almost full speed - cobbles slow you down
-        addMaterialsToDefaultSpeedMultipliers(0.95, Material.COBBLESTONE, Material.MOSSY_COBBLESTONE);
-        // Wood logs are a slight speed boost
-        addTagsToDefaultSpeedMultipliers(1.05, Tag.LOGS);
-        // Copper is slightly faster initially, but if it oxidizes it gets slower
-        addMaterialsToDefaultSpeedMultipliers(1.15, Material.COPPER_BLOCK, Material.WAXED_COPPER_BLOCK);
-        addMaterialsToDefaultSpeedMultipliers(1.0, Material.EXPOSED_COPPER, Material.WAXED_EXPOSED_COPPER);
-        addMaterialsToDefaultSpeedMultipliers(0.9, Material.WEATHERED_COPPER, Material.WAXED_WEATHERED_COPPER);
-        addMaterialsToDefaultSpeedMultipliers(0.75, Material.OXIDIZED_COPPER, Material.WAXED_OXIDIZED_COPPER);
-        // Iron
-        addMaterialsToDefaultSpeedMultipliers(1.25, Material.IRON_BLOCK);
-        // Gold
-        addMaterialsToDefaultSpeedMultipliers(1.35, Material.GOLD_BLOCK);
-        // Blue ice is fastest
-        addMaterialsToDefaultSpeedMultipliers(1.5, Material.BLUE_ICE);
+    private int reloadPluginConfig() {
+        // empty our existing config
+        speedMultipliers.clear();
+        // load new config
+        int failedTags = this.loadTags();
+        int failedBlocks = this.loadBlocks();
+        // if it's still empty - show a warning
+        if (speedMultipliers.isEmpty()) {
+            this.logger.warn("Configuration is empty and no speeds are loaded - plugin will have no effect.");
+        } else {
+            this.logger.info("Loaded custom speeds for {} blocks.", speedMultipliers.size());
+        }
+        // hopefully zero
+        return failedTags + failedBlocks;
+    }
+
+    private int ArctlReload(CommandContext<CommandSourceStack> context) {
+        this.logger.info("Reloading config...");
+        this.reloadConfig();
+        int failed = this.reloadPluginConfig();
+        CommandSender sender = context.getSource().getSender();
+        if (failed == 0) {
+            sender.sendMessage("Config reloaded successfully.");
+        } else {
+            sender.sendMessage("Failed to load " + failed + " entries... check server logs!");
+        }
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private void setupCommands() {
+        LiteralCommandNode<CommandSourceStack> arctl = Commands.literal("arctl")
+                .then(Commands.literal("reload")
+                        .requires(source -> source.getSender().isOp())
+                        .executes(this::ArctlReload))
+                .build();
+
+        this.getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS, event -> {
+            event.registrar().register(arctl);
+        });
     }
 
     @Override
     public void onEnable() {
         this.getServer().getPluginManager().registerEvents(this, this);
+        this.saveDefaultConfig();
+        this.logger.info("Loading config...");
+        this.reloadPluginConfig();
+        this.setupCommands();
         this.logger.info("Adaptive Rails is enabled.");
     }
 
@@ -82,7 +157,7 @@ public final class AdaptiveRails extends JavaPlugin implements Listener {
 
         minecart.setSlowWhenEmpty(false);
         Block belowBlock = block.getRelative(0, -1, 0);
-        Double speedMultiplier = DEFAULT_SPEED_MULTIPLIERS.get(belowBlock.getType());
+        Double speedMultiplier = this.speedMultipliers.get(belowBlock.getType());
         if (speedMultiplier == null) {
             minecart.setMaxSpeed(DEFAULT_SPEED);
         } else {

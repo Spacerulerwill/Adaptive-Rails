@@ -1,7 +1,7 @@
-name: Adaptive-Rails
+name: AdaptiveRails
 version: 0.1.0
 main: com.spacerulerwill.adaptiverails.AdaptiveRails
 description: A plugin that allows powered rails to affect minecart's speed differently depending on the they are placed on.
 author: Spacerulerwill
-website: https://github.com/Spacerulerwill
+website: https://github.com/Spacerulerwill/Adaptive-Rails
 api-version: '26.3'
